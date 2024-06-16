@@ -1,0 +1,79 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from openpyxl import Workbook
+
+# Načtení URL adres ze souboru
+with open('sports.txt', 'r') as file:
+    urls = file.read().splitlines()
+
+# Spuštění WebDriveru (Chrome)
+driver = webdriver.Chrome()
+driver.set_window_size(800, 1000)
+driver.implicitly_wait(15)
+
+# Vytvoření nového sešitu Excel
+wb = Workbook()
+ws = wb.active
+
+# Nastavení hlavičky
+ws.append(['Sport', 'Time', 'Team-1', 'Team-2', 'Odds-T1', 'Odds-Draw', 'Odds-T2'])
+
+for url in urls:
+    sport = url.split('/')[-1].upper()
+
+    # Kontrola, zda URL obsahuje znak '@' a odstranění tohoto znaku
+    url_to_scrape = url.replace('@', '')
+
+    driver.get(url_to_scrape)
+
+    try:
+        # Čekání na načtení požadovaného elementu
+        element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, '.event-teams_teamName__PrZYZ'))
+        )
+
+        # Scrapování dat
+        matches = driver.find_elements(By.CSS_SELECTOR, '.events-table_row__FGsgm')
+
+        # Zpracování a výpis dat
+        for match in matches:
+            match_info = match.text.split('\n')
+
+            # Filtr na "v průběhu" a "nezačal"
+            if "V průběhu" in match_info or "Nezačal" in match_info:
+                continue
+
+            # Pokud zápas obsahuje dostatek informací
+            if len(match_info) >= 6:
+                time = match_info[0]
+
+                team1 = match_info[1]
+                team2 = match_info[2]
+                odds_team1 = match_info[3]
+
+                # Zpracování podle toho, zda URL obsahuje '@'
+                if '@' in url:
+                    # URL obsahuje '@' - zápas bez možnosti remízy
+                    odds_team2 = match_info[4]
+
+                    # Přidání dat do Excelu bez kurzu na remízu
+                    ws.append([sport, time, team1, team2, odds_team1, '', odds_team2])
+                else:
+                    # URL neobsahuje '@' - zápas s možností remízy
+                    odds_draw = match_info[4]
+                    odds_team2 = match_info[5]
+
+                    # Přidání dat do Excelu včetně kurzu na remízu
+                    ws.append([sport, time, team1, team2, odds_team1, odds_draw, odds_team2])
+
+    except Exception as e:
+        print(f"Error processing URL {url}: {e}")
+        continue
+
+# Uložení Excel souboru
+wb.save('matches.xlsx')
+
+# Ukončení WebDriveru
+driver.quit()
